@@ -2,6 +2,8 @@
 #define TIMING_H_
 
 
+#define show_msg_nof(x, y, msg)  show_msg_with_leng(x, y, msg, 288)
+
 struct LcdDevice *init_lcd_timing(const char *device);
 
 /**
@@ -17,7 +19,7 @@ void * start_timing(void *arg);
 void *show_park_info(void *arg);
 
 
-void show_msg_nof(int x, int y, char *msg);
+void show_msg_with_leng(int x, int y, char *msg, int leng);
 
 
 

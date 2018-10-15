@@ -16,52 +16,54 @@
 #include "park_sql.h"
 
 
-extern sqlite3 *pdb;			// mainÖĞ¶¨ÒåµÄÊı¾İ¿â¾ä±ú
-extern ListNode *tmp_list;		// mainÖĞµÄ¿¨ºÅ¶ÓÁĞ
-extern pthread_mutex_t mutex;	// mianÖĞµÄÏß³ÌËø
-// ÉÏËø£ºpthread_mutex_lock(&mutex)
-// ½âËø£ºpthread_mutex_unlock(&mutex)
 
-volatile unsigned int cardid ;	// ¶àÏß³Ì±äÁ¿£¬¶ÁÈ¡¸ÃÊıÖµÊ±Ê¹ÓÃÄÚ´æµØÖ·¶ÁÈ¡¶ø²»ÊÇ¼Ä´æÆ÷¶ÁÈ¡
+
+extern sqlite3 *pdb;			// mainä¸­å®šä¹‰çš„æ•°æ®åº“å¥æŸ„
+extern ListNode *tmp_list;		// mainä¸­çš„å¡å·é˜Ÿåˆ—
+extern pthread_mutex_t mutex;	// mianä¸­çš„çº¿ç¨‹é”
+// ä¸Šé”ï¼špthread_mutex_lock(&mutex)
+// è§£é”ï¼špthread_mutex_unlock(&mutex)
+
+static volatile unsigned int cardid ;	// å¤šçº¿ç¨‹å˜é‡ï¼Œè¯»å–è¯¥æ•°å€¼æ—¶ä½¿ç”¨å†…å­˜åœ°å€è¯»å–è€Œä¸æ˜¯å¯„å­˜å™¨è¯»å–
 static struct timeval timeout;
 #define DEV_PATH   "/dev/ttySAC1"
 
-/* ÉèÖÃ´°¿Ú²ÎÊı:9600ËÙÂÊ */
+/* è®¾ç½®çª—å£å‚æ•°:9600é€Ÿç‡ */
 void init_tty(int fd)
 {    
-	//ÉùÃ÷ÉèÖÃ´®¿ÚµÄ½á¹¹Ìå
+	//å£°æ˜è®¾ç½®ä¸²å£çš„ç»“æ„ä½“
 	struct termios termios_new;
-	//ÏÈÇå¿Õ¸Ã½á¹¹Ìå
+	//å…ˆæ¸…ç©ºè¯¥ç»“æ„ä½“
 	bzero( &termios_new, sizeof(termios_new));
-	//	cfmakeraw()ÉèÖÃÖÕ¶ËÊôĞÔ£¬¾ÍÊÇÉèÖÃtermios½á¹¹ÖĞµÄ¸÷¸ö²ÎÊı¡£
+	//	cfmakeraw()è®¾ç½®ç»ˆç«¯å±æ€§ï¼Œå°±æ˜¯è®¾ç½®termiosç»“æ„ä¸­çš„å„ä¸ªå‚æ•°ã€‚
 	cfmakeraw(&termios_new);
-	//ÉèÖÃ²¨ÌØÂÊ
+	//è®¾ç½®æ³¢ç‰¹ç‡
 	//termios_new.c_cflag=(B9600);
 	cfsetispeed(&termios_new, B9600);
 	cfsetospeed(&termios_new, B9600);
-	//CLOCALºÍCREAD·Ö±ğÓÃÓÚ±¾µØÁ¬½ÓºÍ½ÓÊÜÊ¹ÄÜ£¬Òò´Ë£¬Ê×ÏÈÒªÍ¨¹ıÎ»ÑÚÂëµÄ·½Ê½¼¤»îÕâÁ½¸öÑ¡Ïî¡£    
+	//CLOCALå’ŒCREADåˆ†åˆ«ç”¨äºæœ¬åœ°è¿æ¥å’Œæ¥å—ä½¿èƒ½ï¼Œå› æ­¤ï¼Œé¦–å…ˆè¦é€šè¿‡ä½æ©ç çš„æ–¹å¼æ¿€æ´»è¿™ä¸¤ä¸ªé€‰é¡¹ã€‚    
 	termios_new.c_cflag |= CLOCAL | CREAD;
-	//Í¨¹ıÑÚÂëÉèÖÃÊı¾İÎ»Îª8Î»
+	//é€šè¿‡æ©ç è®¾ç½®æ•°æ®ä½ä¸º8ä½
 	termios_new.c_cflag &= ~CSIZE;
 	termios_new.c_cflag |= CS8; 
-	//ÉèÖÃÎŞÆæÅ¼Ğ£Ñé
+	//è®¾ç½®æ— å¥‡å¶æ ¡éªŒ
 	termios_new.c_cflag &= ~PARENB;
-	//Ò»Î»Í£Ö¹Î»
+	//ä¸€ä½åœæ­¢ä½
 	termios_new.c_cflag &= ~CSTOPB;
 	tcflush(fd,TCIFLUSH);
-	// ¿ÉÉèÖÃ½ÓÊÕ×Ö·ûºÍµÈ´ıÊ±¼ä£¬ÎŞÌØÊâÒªÇó¿ÉÒÔ½«ÆäÉèÖÃÎª0
+	// å¯è®¾ç½®æ¥æ”¶å­—ç¬¦å’Œç­‰å¾…æ—¶é—´ï¼Œæ— ç‰¹æ®Šè¦æ±‚å¯ä»¥å°†å…¶è®¾ç½®ä¸º0
 	termios_new.c_cc[VTIME] = 10;
 	termios_new.c_cc[VMIN] = 1;
-	// ÓÃÓÚÇå¿ÕÊäÈë/Êä³ö»º³åÇø
+	// ç”¨äºæ¸…ç©ºè¾“å…¥/è¾“å‡ºç¼“å†²åŒº
 	tcflush (fd, TCIFLUSH);
-	//Íê³ÉÅäÖÃºó£¬¿ÉÒÔÊ¹ÓÃÒÔÏÂº¯Êı¼¤»î´®¿ÚÉèÖÃ
+	//å®Œæˆé…ç½®åï¼Œå¯ä»¥ä½¿ç”¨ä»¥ä¸‹å‡½æ•°æ¿€æ´»ä¸²å£è®¾ç½®
 	if(tcsetattr(fd,TCSANOW,&termios_new) )
 		printf("Setting the serial1 failed!\n");
 
 }
 
 
-/*¼ÆËãĞ£ÑéºÍ*/
+/*è®¡ç®—æ ¡éªŒå’Œ*/
 unsigned char CalBCC(unsigned char *buf, int n)
 {
 	int i;
@@ -73,7 +75,7 @@ unsigned char CalBCC(unsigned char *buf, int n)
 	return (~bcc);
 }
 
-//  ·¢ËÍAÃüÁî
+//  å‘é€Aå‘½ä»¤
 
 int PiccRequest(int fd)
 {
@@ -83,13 +85,13 @@ int PiccRequest(int fd)
 	
 	memset(WBuf, 0, 128);
 	memset(RBuf,1,128);
-	WBuf[0] = 0x07;	//Ö¡³¤= 7 Byte
-	WBuf[1] = 0x02;	//°üºÅ= 0 , ÃüÁîÀàĞÍ= 0x01
-	WBuf[2] = 0x41;	//ÃüÁî= 'A'
-	WBuf[3] = 0x01;	//ĞÅÏ¢³¤¶È= 1
-	WBuf[4] = 0x52;	//ÇëÇóÄ£Ê½:  ALL=0x52
-	WBuf[5] = CalBCC(WBuf, WBuf[0]-2);		//Ğ£ÑéºÍ
-	WBuf[6] = 0x03; 	//½áÊø±êÖ¾
+	WBuf[0] = 0x07;	//å¸§é•¿= 7 Byte
+	WBuf[1] = 0x02;	//åŒ…å·= 0 , å‘½ä»¤ç±»å‹= 0x01
+	WBuf[2] = 0x41;	//å‘½ä»¤= 'A'
+	WBuf[3] = 0x01;	//ä¿¡æ¯é•¿åº¦= 1
+	WBuf[4] = 0x52;	//è¯·æ±‚æ¨¡å¼:  ALL=0x52
+	WBuf[5] = CalBCC(WBuf, WBuf[0]-2);		//æ ¡éªŒå’Œ
+	WBuf[6] = 0x03; 	//ç»“æŸæ ‡å¿—
 
 	FD_ZERO(&rdfd);
 	FD_SET(fd,&rdfd);
@@ -102,7 +104,7 @@ int PiccRequest(int fd)
 			perror("select error\n");
 			break;
 		case  0:
-			// ³¬Ê±
+			// è¶…æ—¶
 			// printf("Request timed out.\n");
 			break;
 		default:
@@ -112,7 +114,7 @@ int PiccRequest(int fd)
 				printf("ret = %d, %d\n", ret, errno);
 				break;
 			}
-			if (RBuf[2] == 0x00)	 	//Ó¦´ğÖ¡×´Ì¬²¿·ÖÎª0 ÔòÇëÇó³É¹¦
+			if (RBuf[2] == 0x00)	 	//åº”ç­”å¸§çŠ¶æ€éƒ¨åˆ†ä¸º0 åˆ™è¯·æ±‚æˆåŠŸ
 			{
 				return 0;
 			}
@@ -122,7 +124,7 @@ int PiccRequest(int fd)
 }
 
 
-/*·ÀÅö×²£¬»ñÈ¡·¶Î§ÄÚ×î´óID*/
+/*é˜²ç¢°æ’ï¼Œè·å–èŒƒå›´å†…æœ€å¤§ID*/
 int PiccAnticoll(int fd)
 {
 	unsigned char WBuf[128], RBuf[128];
@@ -130,14 +132,14 @@ int PiccAnticoll(int fd)
 	fd_set rdfd;;
 	memset(WBuf, 0, 128);
 	memset(RBuf,1,128);
-	WBuf[0] = 0x08;	//Ö¡³¤= 8 Byte
-	WBuf[1] = 0x02;	//°üºÅ= 0 , ÃüÁîÀàĞÍ= 0x01
-	WBuf[2] = 0x42;	//ÃüÁî= 'B'
-	WBuf[3] = 0x02;	//ĞÅÏ¢³¤¶È= 2
-	WBuf[4] = 0x93;	//·ÀÅö×²0x93 --Ò»¼¶·ÀÅö×²
-	WBuf[5] = 0x00;	//Î»¼ÆÊı0
-	WBuf[6] = CalBCC(WBuf, WBuf[0]-2);		//Ğ£ÑéºÍ
-	WBuf[7] = 0x03; 	//½áÊø±êÖ¾
+	WBuf[0] = 0x08;	//å¸§é•¿= 8 Byte
+	WBuf[1] = 0x02;	//åŒ…å·= 0 , å‘½ä»¤ç±»å‹= 0x01
+	WBuf[2] = 0x42;	//å‘½ä»¤= 'B'
+	WBuf[3] = 0x02;	//ä¿¡æ¯é•¿åº¦= 2
+	WBuf[4] = 0x93;	//é˜²ç¢°æ’0x93 --ä¸€çº§é˜²ç¢°æ’
+	WBuf[5] = 0x00;	//ä½è®¡æ•°0
+	WBuf[6] = CalBCC(WBuf, WBuf[0]-2);		//æ ¡éªŒå’Œ
+	WBuf[7] = 0x03; 	//ç»“æŸæ ‡å¿—
 	
 	FD_ZERO(&rdfd);
 	FD_SET(fd,&rdfd);
@@ -159,9 +161,9 @@ int PiccAnticoll(int fd)
 				printf("ret = %d, %d\n", ret, errno);
 				break;
 			}
-			if (RBuf[2] == 0x00) //Ó¦´ğÖ¡×´Ì¬²¿·ÖÎª0 Ôò»ñÈ¡ID ³É¹¦
+			if (RBuf[2] == 0x00) //åº”ç­”å¸§çŠ¶æ€éƒ¨åˆ†ä¸º0 åˆ™è·å–ID æˆåŠŸ
 			{
-				cardid = (RBuf[7]<<24) | (RBuf[6]<<16) | (RBuf[5]<<8) | RBuf[4];//±£´æµÃµ½µÄ¿¨ID
+				cardid = (RBuf[7]<<24) | (RBuf[6]<<16) | (RBuf[5]<<8) | RBuf[4];//ä¿å­˜å¾—åˆ°çš„å¡ID
 				return 0;
 			}
 	}
@@ -175,19 +177,19 @@ void *get_card(void *arg)
 	int fd;
 	
 
-	fd = open(DEV_PATH, O_RDWR | O_NOCTTY | O_NONBLOCK);//ÒÔ·Ç×èÈû
+	fd = open(DEV_PATH, O_RDWR | O_NOCTTY | O_NONBLOCK);//ä»¥éé˜»å¡
 	if (fd < 0)
 	{
 		fprintf(stderr, "Open ttySAC1 fail!\n");
 		return NULL;
 	}
-	/*³õÊ¼»¯´®¿Ú*/
+	/*åˆå§‹åŒ–ä¸²å£*/
 	init_tty(fd);
 	timeout.tv_sec = 3; 
 	timeout.tv_usec = 0;
-	while(1) //¶à´ÎÇëÇó
+	while(1) //å¤šæ¬¡è¯·æ±‚
 	{
-		/*ÇëÇóÌìÏß·¶Î§µÄ¿¨   ·¢ËÍAÃüÁî*/
+		/*è¯·æ±‚å¤©çº¿èŒƒå›´çš„å¡   å‘é€Aå‘½ä»¤*/
 		if ( PiccRequest(fd)==-1 )
 		{
 			cardid = 0;
@@ -195,28 +197,25 @@ void *get_card(void *arg)
 			// printf("The request failed!\n");
 		}
 		usleep(100000);
-		/*½øĞĞ·ÀÅö×²£¬»ñÈ¡ÌìÏß·¶Î§ÄÚ×î´óµÄID   ·¢ËÍBÃüÁî*/
+		/*è¿›è¡Œé˜²ç¢°æ’ï¼Œè·å–å¤©çº¿èŒƒå›´å†…æœ€å¤§çš„ID   å‘é€Bå‘½ä»¤*/
 		if( PiccAnticoll(fd)==-1 )
 		{
 			cardid = 0;
 			// continue;
 			// printf("Couldn't get card-id!\n");
 		}
-		/* ¶ÁÈ¡µ½¿¨Æ¬ĞÅÏ¢ */
+		/* è¯»å–åˆ°å¡ç‰‡ä¿¡æ¯ */
 		else
 		{
 			if (cardid == 0)
 			{
-				/* Èç¹û¿¨ºÅÎª0£¬¼ÌĞøÇëÇó */ 
+				/* å¦‚æœå¡å·ä¸º0ï¼Œç»§ç»­è¯·æ±‚ */ 
 				continue;
 			}
-			// ´Ë´¦¶Ô»ñÈ¡µ½µÄcardid´¦Àí
+			// æ­¤å¤„å¯¹è·å–åˆ°çš„cardidå¤„ç†
 			printf("card ID = %x\n", cardid);
 			parking(pdb, cardid);
 			cardid = 0;
-			// pthread_mutex_lock(&mutex);
-			// in(tmp_list, cardid);			//°Ñ¶ÁÈ¡µ½µÄ¿¨ºÅÈëÁĞ
-			// pthread_mutex_unlock(&mutex);
 			usleep(1000000);
 
 		}

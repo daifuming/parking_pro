@@ -259,6 +259,50 @@ void drow_bmp(struct LcdDevice *lcd, const char *picpath, struct Rect rect)
 	free(rgb_buf_char);
 }
 
+// //绘制bmp图片
+// void draw_bmp_no_zoom(struct LcdDevice* lcd, int x, int y, const char *picPath)
+// {
+// 	//1.打开图片 
+// 	FILE  *file =fopen(picPath, "r");
+// 	if(file == NULL) perror("open bmp fail");
+	
+// 	//2.图片头+图片数据
+// 	BmpHeader mBmpHeader;
+// 	fread(&mBmpHeader, sizeof(BmpHeader), 1, file);
+	
+// 	int w = mBmpHeader.biWidth; //保存图片的宽和高
+// 	int h = mBmpHeader.biHeight;
+	
+// 	//定义一个空间存储bmp图片像素/上下颠倒
+// 	unsigned char rgbBuf[mBmpHeader.bfSize - 54];
+// 	fread(rgbBuf, sizeof(rgbBuf), 1, file);
+// 	fclose(file);
+	
+// 	// 绘制目标图像的大小
+// 	int dw = w+x > lcd->width? lcd->width-x : w;       
+// 	int dh = h+y > lcd->height? lcd ->height-y : h;
+	
+// 	unsigned int *p = lcd ->mp + y*lcd ->width + x;
+// 	// unsigned int *p = lcd->mp + (y+dh)*lcd->width + x;
+// 	unsigned char *trgb = rgbBuf + (h-1)*w*3;
+// 	printf("p - mp:%d\n", p - lcd ->mp);
+// 	printf("trgb :%d\n", trgb - rgbBuf);
+// 	unsigned int color = 0;
+// 	int i=0; 
+// 	int j=0;
+// 	for(i=0; i<dh; i++)
+// 	{
+// 		for(j=0; j<dw; j++)
+// 		{
+// 			memcpy(&color, trgb, 3);
+// 			p[j] = color;
+// 			trgb += 3;
+// 		}
+// 		p += lcd->width;
+// 		trgb -= w*3;
+// 	}
+// }
+
 //绘制bmp图片
 void draw_bmp_no_zoom(struct LcdDevice* lcd, int x, int y, const char *picPath)
 {
@@ -301,4 +345,7 @@ void draw_bmp_no_zoom(struct LcdDevice* lcd, int x, int y, const char *picPath)
 		trgb += (w-dw)*3;
 	}
 }
+
+
+
 

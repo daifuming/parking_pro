@@ -17,6 +17,9 @@
 #include <time.h>
 #include <pthread.h>
 
+#define PLAY_WEL "aplay /massstorage/welcome.wav &"	// 播放欢迎语音
+#define PLAY_THK "aplay /massstorage/thanks.wav &"	// 播放谢谢语音
+
 extern struct LcdDevice *lcd;	// main中的lcd屏
 extern int park_space;			// mian中的车位信息
 
@@ -162,19 +165,19 @@ void show_msg(font *f, int x, int y, char *msg)
 	}destroyBitmap(bm);
 }
 
-void show_msg_nof(int x, int y, char *msg)
+void show_msg_with_leng(int x, int y, char *msg, int leng)
 {
 	font *f = fontLoad("/usr/share/fonts/DroidSansFallback.ttf");
 	fontSetSize(f, 32);
-	bitmap *bm = createBitmap(288, 50, 4);		
+	bitmap *bm = createBitmap(leng, 50, 4);		
 	fontPrint(f, bm, 20, 10, msg, getColor(255, 255, 0, 0), 0);
 	/*显示日期 					y 					x   */
 	unsigned int *p = lcd->mp + y*lcd ->width + x;
 	for(int i=0; i<50; i++)
 	{
-		for(int j=0; j<288; j++)
+		for(int j=0; j<leng; j++)
 		{
-			memcpy(p+j, bm->map+j*4+i*288*4, 4);
+			memcpy(p+j, bm->map+j*4+i*leng*4, 4);
 		}
 		p+=800;
 	}destroyBitmap(bm);
@@ -190,6 +193,7 @@ void *show_park_info(void *arg)
 		char carid[64];
 		char parktime[64];
 		char cost[64];
+		char local[64];
 		int  ioflag;
 	} *info = (struct park_info *)arg;		/* 保存车主信息的结构体 */
 
@@ -202,6 +206,7 @@ void *show_park_info(void *arg)
 	show_msg(f, 400, 150, info ->carid);
 	show_msg(f, 400, 200, info ->parktime);
 	show_msg(f, 400, 250, info ->cost);
+	show_msg(f, 100, 250, info ->local);
 
 	// 更新车位信息
 	char ps_msg[64] = {0};
@@ -213,5 +218,11 @@ void *show_park_info(void *arg)
 	fontUnload(f);
 
 	free(info);
+
+	// 播放语音
+	// if (info ->ioflag == -1)
+	// 	system(PLAY_WEL);
+	// else
+	// 	system(PLAY_THK);
 }
 

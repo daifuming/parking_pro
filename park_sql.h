@@ -4,11 +4,11 @@
 #include "sqlite3.h"
 #include <stdbool.h>
 
+#define PARK_NUM 100
 #define bs128 128
 #define SQLPATH "/massstorage/database/park.db"
 // #define SQLPATH "/mnt/hgfs/pcshare/parking_pro/park.db"
 // #define SQLPATH "/home/dai/sqlitedb/park.db"
-
 
 /**
  * 初始化sqlite3数据库
@@ -18,9 +18,7 @@
  */
 int init_sql(const char *db_path, sqlite3 **parksql);
 
-
 void dele_sql(sqlite3 *parksql);
-
 
 /**
  * 获取sqlite3数据库中的一张表中的条目数
@@ -38,7 +36,6 @@ int get_item_count(sqlite3 *parksql, const char *table);
  */
 bool in_table(sqlite3 *parksql, const char *table, const char *cardid);
 
-
 /**
  * 添加（注册）停车场用户线程函数
  * @param  	parksql struct sql_and_num
@@ -48,7 +45,7 @@ bool in_table(sqlite3 *parksql, const char *table, const char *cardid);
 			}
  * @return  
  */
-void * add_user(void *arg);
+void *add_user(void *arg);
 
 /**
  * 获取车辆停放时长min
@@ -60,7 +57,10 @@ void * add_user(void *arg);
  */
 int parking(sqlite3 *parksql, unsigned int number);
 
+/**
+ * 通过查询time表获取当前车位使用状态保存到数组park_attr中
+ */
 
-
+int init_park_attr(sqlite3 *parksql);
 
 #endif

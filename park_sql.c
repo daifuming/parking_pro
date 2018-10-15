@@ -2,6 +2,7 @@
 #include "park_sql.h"
 #include "sig_list.h"
 #include "timing.h"
+#include "park_draw.h"
 // #include "sqlite3.h"
 
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include <stdlib.h>
 
 
+extern int park_attr[PARK_NUM];	// 停车场停车状态
 extern ListNode *tmp_list;		// main中的卡号队列
 extern pthread_mutex_t mutex;	// mian中的线程锁
 // 上锁：pthread_mutex_lock(&mutex)
@@ -23,7 +25,7 @@ struct sql_and_num
 };
 
 
-void cre_pshow(sqlite3 *parksql, unsigned int number, long tim);
+void cre_pshow(sqlite3 *parksql, unsigned int number, long tim, int local);
 
 
 // 初始化数据库
@@ -44,7 +46,7 @@ int init_sql(const char *db_path, sqlite3 **parksql)
 		return -1;
 	}
 
-	if (sqlite3_exec(*parksql, "create table if not exists time(cardid text not null unique, time text not null);", NULL, NULL, NULL) != SQLITE_OK)
+	if (sqlite3_exec(*parksql, "create table if not exists time(cardid text not null unique, time text not null, local int not null unique);", NULL, NULL, NULL) != SQLITE_OK)
 	{
 		fprintf(stderr, "create table [time] fail\n");
 		sqlite3_close(*parksql);
@@ -103,7 +105,7 @@ void * add_user(void *arg)
 	sqlite3 *parksql = tmp ->pdb;
 	char cardid[64] = {0};
 	strcpy(cardid, tmp ->num);
-	free(tmp);
+	// free(tmp);
 
 	if (in_table(parksql, "user", cardid))
 	{
@@ -112,9 +114,17 @@ void * add_user(void *arg)
 	}
 	else
 	{
-		printf("无用户信息，是否添加用户信息？(y/n)");
+		printf("无用户信息，是否添加用户信息？(y/n)\n");
 		char ret = 'z';
-		scanf("%c", &ret);
+		setbuf(stdin, NULL);
+		while(1)
+		{
+			scanf("%c", &ret);
+			if(ret != '\n' && ret != 'z')
+				break;
+		}
+		
+		
 		if (ret != 'y')
 		{
 			return (void *)0;
@@ -122,24 +132,13 @@ void * add_user(void *arg)
 	}
 
 
-	// unsigned int id = 0;
-	// printf("input card id:");
-	// scanf("%d", &id);
-	// if (id < 0)
-	// {
-	// 	fprintf(stderr, "add_user:get_card fail\n");
-	// 	return -1;
-	// }
-	// char cardid[64] = {0};
-	// sprintf(cardid, "%x", id);			/* 转成text数据 */
-
 	// 获取用户信息并写进table
-	char name_buf[64] = {0};			/* 姓名 		*/
+	char name_buf[64] = {0};			/* 姓名 	*/
 	char carid[64] = {0};				/* 车牌号 	*/
 	printf("input name:");
-	scanf("%s", name_buf);
+	scanf("%s", &name_buf);
 	printf("input car number:");
-	scanf("%s", carid);
+	scanf("%s", &carid);
 
 	char sql[128] = {0};
 	sprintf(sql, "INSERT INTO user VALUES (\"%s\", \"%s\", \"%s\");", name_buf, carid, cardid);
@@ -209,15 +208,17 @@ int parking(sqlite3 *parksql, unsigned int number)
 	char cardid[64] = {0};			/* 转换成text */
 	sprintf(cardid, "%x", number);
 
-	if (in_table(parksql, "time", cardid))	/*   卡号在time表中，计算时间，删除数据 		*/
+	if (in_table(parksql, "time", cardid))	/* 卡号在time表中，计算时间，删除数据	*/
 	{
 		
 		char sql[bs128] = {0};	/* sql查询语句 	*/
-		char **result = NULL;	/* 存放结果 		*/
+		char **result = NULL;	/* 存放结果 	*/
 		int row = 0;			/* 结果数 		*/
 		int col = 0; 			/* 字段数 		*/
 		char *errmsg = NULL;	/* 错误信息		*/
-		long _time = 0;	/* 进场时间		*/
+
+		long _time = 0;			/* 进场时间		*/
+		int _local = -1;		/* 停车位置		*/
 
 		// 生成查询语句,查询进场时间：
 		sprintf(sql, "select * from time where cardid is \"%s\";", cardid);
@@ -227,12 +228,11 @@ int parking(sqlite3 *parksql, unsigned int number)
 			sqlite3_free(errmsg);
 			return -1;
 		}else
-		{
+		{	// 获取到停车数据
 			char time_in[16] = {0};	
 			strcpy(time_in, result[col + 1]);
-			// printf("res:%s\n", time_in);
 			sscanf(time_in, "%ld",&_time);
-			// printf("%ld\n", _time);
+			sscanf(result[col + 2], "%d", &_local);
 		}
 		if (result){ sqlite3_free_table(result);}
 
@@ -245,6 +245,9 @@ int parking(sqlite3 *parksql, unsigned int number)
 				sqlite3_free(errmsg);}
 			return -1;
 		}
+		// 更新车位状态数组
+		park_attr[_local] = 0;
+		draw_area(_local/10);
 
 		// 获取当前时间
 		time_t tim;
@@ -252,7 +255,7 @@ int parking(sqlite3 *parksql, unsigned int number)
 
 		long t = tim - _time;
 		printf("time:%ld\n", t);
-		cre_pshow(parksql, number, t);	/* 展示车主信息 */
+		cre_pshow(parksql, number, t, _local);	/* 展示车主信息 */
 		return t;
 	}
 	else	/* 卡号不在time表中，插入数据 */
@@ -264,10 +267,11 @@ int parking(sqlite3 *parksql, unsigned int number)
 		memset(&tmp_arg ->num, 0, 64);
 		strcpy(tmp_arg ->num, cardid);
 
-		pthread_t pid = 0;
-		pthread_create(&pid, NULL, add_user, (void *)tmp_arg);
+		// pthread_t pid = 0;
+		// pthread_create(&pid, NULL, add_user, (void *)tmp_arg);
+		// pthread_join(pid, NULL);
+		add_user((void *)tmp_arg);
 		
-		cre_pshow(parksql, number, -1);	/* 展示车主信息,-1表示入库车辆，无时间 */
 
 		// 获取当前时间
 		char tim[16] = {0};
@@ -275,9 +279,25 @@ int parking(sqlite3 *parksql, unsigned int number)
 		time(&t);
 		sprintf(tim, "%ld", t);
 
+		// 获取最小空闲车位
+		int local = -1;
+		for (int i = 0; i < PARK_NUM; i ++)
+		{
+			if (park_attr[i] == 0)
+			{
+				local = i;
+				park_attr[i] = 1;
+				draw_area(i/10);
+				break;
+			}
+		}
+		if (local == -1)	{ printf("停车位已满！\n");	return -1;	}
+
+		cre_pshow(parksql, number, -1, local);	/* 展示车主信息,-1表示入库车辆，无时间 */
 		
+		// 插入数据
 		char sql[bs128] = {0};
-		sprintf(sql, "INSERT INTO time VALUES (\"%s\", \"%s\");", cardid, tim);
+		sprintf(sql, "INSERT INTO time VALUES (\"%s\", \"%s\", %d);", cardid, tim, local);
 		printf("sql:%s\n", sql);
 		char *errmsg = NULL;
 		if (sqlite3_exec(parksql, sql, NULL, NULL, &errmsg) != SQLITE_OK)
@@ -296,7 +316,7 @@ int parking(sqlite3 *parksql, unsigned int number)
  * @param number 卡号
  * @param tim    时长
  */
-void cre_pshow(sqlite3 *parksql, unsigned int number, long tim)
+void cre_pshow(sqlite3 *parksql, unsigned int number, long tim, int local)
 {
 	if (parksql == NULL)
 	{
@@ -309,6 +329,7 @@ void cre_pshow(sqlite3 *parksql, unsigned int number, long tim)
 		char carid[64];
 		char parktime[64];
 		char cost[64];
+		char local[64];
 		int  ioflag;
 	} *info = NULL;		/* 保存车主信息的结构体 */
 	info = (struct park_info *)malloc(sizeof(struct park_info));
@@ -321,7 +342,7 @@ void cre_pshow(sqlite3 *parksql, unsigned int number, long tim)
 
 	// 在user表上查询信息
 	char sql[bs128] = {0};	/* sql查询语句 	*/
-	char **result = NULL;	/* 存放结果 		*/
+	char **result = NULL;	/* 存放结果 	*/
 	int row = 0;			/* 结果数 		*/
 	int col = 0; 			/* 字段数 		*/
 	char *errmsg = NULL;	/* 错误信息		*/	
@@ -334,9 +355,17 @@ void cre_pshow(sqlite3 *parksql, unsigned int number, long tim)
 		sqlite3_free(errmsg);
 		return ;
 	}else
-	{
-		sprintf(info ->name,  "车主:%s", result[col]);		/* 姓名 */
-		sprintf(info ->carid, "车牌号:%s", result[col + 1]);	/* 车牌 */
+	{	// bugbugbug!!!!
+		if (row > 0)
+		{
+			sprintf(info ->name,  "车主:%s", result[col]);		/* 姓名 */
+			sprintf(info ->carid, "车牌号:%s", result[col + 1]);	/* 车牌 */
+		}
+		else
+		{
+			sprintf(info ->name,  "车主:%s", "未注册");		/* 姓名 */
+			sprintf(info ->carid, "车牌号:%s", "未注册");	/* 车牌 */
+		}
 	}
 	if (result){ sqlite3_free_table(result);}
 
@@ -352,11 +381,13 @@ void cre_pshow(sqlite3 *parksql, unsigned int number, long tim)
 		int cost = tim * 2;		/* 1sec2yuan */
 		// int cost = ((tim/60)%60) / 5;	/* 5min1yuan */
 		sprintf(info ->cost, "费用:%d元", cost);
+		sprintf(info ->local, "您的停车位:%3d号", local);
 	}
 	else
 	{
 		strcpy(info ->parktime, "时长:入场");
 		strcpy(info ->cost, "费用:暂无");
+		sprintf(info ->local, "     请前往:%3d号车位", local);
 	}
 
 	// 创建线程显示 
@@ -364,3 +395,34 @@ void cre_pshow(sqlite3 *parksql, unsigned int number, long tim)
 	pthread_create(&pid, NULL, show_park_info, (void *)info);
 
 }
+
+
+int init_park_attr(sqlite3 *parksql)
+{
+	char sql[bs128] = {0};	/* sql查询语句 	*/
+	char **result = NULL;	/* 存放结果 	*/
+	int row = 0;			/* 结果数 		*/
+	int col = 0; 			/* 字段数 		*/
+	char *errmsg = NULL;	/* 错误信息		*/
+
+	int _local = -1;		/* 停车位置		*/
+
+	// 生成查询语句,查询进场时间：
+	sprintf(sql, "select * from time;");
+	if (sqlite3_get_table(parksql, sql, &result, &row, &col, &errmsg) != SQLITE_OK)	
+	{
+		fprintf(stderr, "get_item_count:sqlite3_get_table fail:%s\n", sqlite3_errmsg(parksql));
+		sqlite3_free(errmsg);
+		return -1;
+	}else
+	{	// 获取到停车数据
+		for (int i = 0; i < row; i++)
+		{
+			sscanf(result[col*(i + 1) + 2], "%d", &_local);
+			park_attr[_local] = 1;
+			_local = -1;
+		}
+	}
+	if (result){ sqlite3_free_table(result);}
+}
+
